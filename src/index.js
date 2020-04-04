@@ -11,7 +11,7 @@ const SEGMENTS_PER_STRIP = 3;
 const LANE_COUNT = 3;
 const STRIPE_WIDTH = .2;
 
-const CAMERA_OFFSET = { x: 0, y: 30, z: -5 };
+const CAMERA_OFFSET = { x: 0, y: 30, z: -10 };
 const CAMERA_SCREEN_DISTANCE = 30;
 
 const MAX_DRAW_DISTANCE = 10000;
@@ -46,12 +46,19 @@ const lerp = (p, a, b) => a + clamp(p, 0, 1) * (b - a);
 const random = (min, max) => min + lerp(Math.random(), 0, max - min);
 const easeInOut = (p, a, b) => lerp((-Math.cos(p*Math.PI)/2) + 0.5, a, b);
 const addVectors = (v1, v2) => ({ x: +v1.x + +v2.x, y: +v1.y + +v2.y, z: +v1.z + +v2.z });
+const scaleVector = (v, m) => ({ x: v.x * m, y: v.y * m, z: v.z * m });
 
 let skyGradient, sunGradient;
 
 let playerPosition = { x: 0, y: 0, z: 0 };
 let cameraPosition = { x: 0, y: 0, z: 0 };
-let speed = 400;
+
+const MAX_Z_SPEED = 2000;
+const Y_HEIGHT = 3;
+const ACCELERATION = 100;
+const DECELERATION = 250;
+
+let velocity = { x: 0, y: 0, z: 0 };
 
 const KEY_CODES = {
     a: 'left',
@@ -77,9 +84,17 @@ function keyUpHandler(e) {
 }
 
 const update = () => {
-    playerPosition.z += (speed * FIXED_TIMESTEP);
+    if (keyStatus.down) {
+        velocity.z = velocity.z - DECELERATION * FIXED_TIMESTEP;
+    } else if (keyStatus.up) {
+        velocity.z = velocity.z + ACCELERATION * FIXED_TIMESTEP;
+    }
+
+    velocity.z = clamp(velocity.z, 0, MAX_Z_SPEED);
+
+    playerPosition = addVectors(playerPosition, scaleVector(velocity, FIXED_TIMESTEP));
     const currentSegment = roadSegments.find(segment => segment.z0 <= playerPosition.z && segment.z1 > playerPosition.z);
-    playerPosition.y = currentSegment.y0;
+    playerPosition.y = currentSegment.y0 + Y_HEIGHT;
     cameraPosition = addVectors(playerPosition, CAMERA_OFFSET);
 };
 
