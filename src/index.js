@@ -4,7 +4,7 @@ const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
 
 const ROAD_WIDTH = 10;
-const ROAD_SEGMENT_COUNT = 4096;
+const ROAD_SEGMENT_COUNT = 10000;
 const SEGMENT_LENGTH = 100;
 const SEGMENTS_PER_STRIP = 3;
 
@@ -53,10 +53,13 @@ let skyGradient, sunGradient;
 let playerPosition = { x: 0, y: 0, z: 0 };
 let cameraPosition = { x: 0, y: 0, z: 0 };
 
+const MAX_X_SPEED = 40;
 const MAX_Z_SPEED = 2000;
 const Y_HEIGHT = 3;
 const ACCELERATION = 100;
 const DECELERATION = 250;
+const X_ACCELERATION = 30;
+const X_DECELERATION = 100;
 
 let velocity = { x: 0, y: 0, z: 0 };
 
@@ -90,6 +93,19 @@ const update = () => {
         velocity.z = velocity.z + ACCELERATION * FIXED_TIMESTEP;
     }
 
+    if (keyStatus.left) {
+        velocity.x = velocity.x - X_ACCELERATION * FIXED_TIMESTEP;
+    } else if (keyStatus.right) {
+        velocity.x = velocity.x + X_ACCELERATION * FIXED_TIMESTEP;
+    } else {
+        if (velocity.x > 0) {
+            velocity.x = Math.max(velocity.x - X_DECELERATION * FIXED_TIMESTEP, 0);
+        } else {
+            velocity.x = Math.min(0, velocity.x + X_DECELERATION * FIXED_TIMESTEP);
+        }
+    }
+
+    velocity.x = clamp(velocity.x, -MAX_X_SPEED, MAX_X_SPEED);
     velocity.z = clamp(velocity.z, 0, MAX_Z_SPEED);
 
     playerPosition = addVectors(playerPosition, scaleVector(velocity, FIXED_TIMESTEP));
