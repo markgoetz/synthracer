@@ -1,17 +1,17 @@
 let canvas, context;
-const FIXED_TIMESTEP = 1000/50;
+const FIXED_TIMESTEP = 1/50;
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
 
 const ROAD_WIDTH = 10;
-const ROAD_SEGMENT_COUNT = 5000;
+const ROAD_SEGMENT_COUNT = 4096;
 const SEGMENT_LENGTH = 100;
 const SEGMENTS_PER_STRIP = 3;
 
 const LANE_COUNT = 3;
 const STRIPE_WIDTH = .2;
 
-const CAMERA_POSITION = { x: 0, y: 3, z: -5 };
+const CAMERA_OFFSET = { x: 0, y: 3, z: -5 };
 const CAMERA_SCREEN_DISTANCE = 30;
 
 const MAX_DRAW_DISTANCE = 10000;
@@ -30,10 +30,28 @@ const SUN_CENTER_Y = 304;
 const SUN_RADIUS = 160;
 const SUN_GRADIENT_PERCENTAGE = .5;
 
+const CURVE_LENGTH = 50;
+const TAPER_LENGTH = 5;
+const MIN_X_FREQUENCY = .002;
+const MAX_X_FREQUENCY = .05;
+const MIN_X_SCALE = -30;
+const MAX_X_SCALE = 30;
+const MIN_Y_FREQUENCY = .002;
+const MAX_Y_FREQUENCY = .05;
+const MIN_Y_SCALE = -30;
+const MAX_Y_SCALE = 30;
+
+const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+const lerp = (p, a, b) => a + clamp(p, 0, 1) * (b - a);
+const random = (min, max) => min + lerp(Math.random(), 0, max - min);
+const easeInOut = (p, a, b) => lerp((-Math.cos(p*Math.PI)/2) + 0.5, a, b);
+const addVectors = (v1, v2) => ({ x: +v1.x + +v2.x, y: +v1.y + +v2.y, z: +v1.z + +v2.z });
+
 let skyGradient, sunGradient;
 
 let playerPosition = { x: 0, y: 0, z: 0 };
-let speed = 3;
+let cameraPosition = { x: 0, y: 0, z: 0 };
+let speed = 400;
 
 const KEY_CODES = {
     a: 'left',
@@ -60,6 +78,9 @@ function keyUpHandler(e) {
 
 const update = () => {
     playerPosition.z += (speed * FIXED_TIMESTEP);
+    const currentSegment = roadSegments.find(segment => segment.z0 <= playerPosition.z && segment.z1 > playerPosition.z);
+    playerPosition.y = currentSegment.y0;
+    cameraPosition = addVectors(playerPosition, CAMERA_OFFSET);
 };
 
 const drawPoly = (p1, p2, p3, p4, color) => {
@@ -74,7 +95,11 @@ const drawPoly = (p1, p2, p3, p4, color) => {
 };
 
 const worldToScreenCoordinates = (x, y, z) => {
-    const cameraCoords = { x: x - CAMERA_POSITION.x, y: y - CAMERA_POSITION.y, z: z - CAMERA_POSITION.z };
+    const cameraCoords = {
+        x: x - cameraPosition.x,
+        y: y - cameraPosition.y,
+        z: z - cameraPosition.z,
+    };
     const projectionRatio = CAMERA_SCREEN_DISTANCE / cameraCoords.z;
     const projectedPos = { x: cameraCoords.x * projectionRatio, y: cameraCoords.y * projectionRatio };
     return ({
@@ -97,12 +122,12 @@ const renderBackground = () => {
 
 const renderRoad = () => {
     roadSegments.filter(
-        segment => segment.z0 >= playerPosition.z && segment.z0 <= playerPosition.z + MAX_DRAW_DISTANCE
+        segment => segment.z0 >= cameraPosition.z && segment.z0 <= cameraPosition.z + MAX_DRAW_DISTANCE
     ).forEach(segment => {
-        const topLeft = worldToScreenCoordinates(segment.x0 - ROAD_WIDTH, segment.y0, segment.z0 - playerPosition.z);
-        const topRight = worldToScreenCoordinates(segment.x0 + ROAD_WIDTH, segment.y0, segment.z0 - playerPosition.z);
-        const bottomLeft = worldToScreenCoordinates(segment.x1 - ROAD_WIDTH, segment.y1, segment.z1 - playerPosition.z);
-        const bottomRight = worldToScreenCoordinates(segment.x1 + ROAD_WIDTH, segment.y1, segment.z1 - playerPosition.z);
+        const topLeft = worldToScreenCoordinates(segment.x0 - ROAD_WIDTH, segment.y0, segment.z0);
+        const topRight = worldToScreenCoordinates(segment.x0 + ROAD_WIDTH, segment.y0, segment.z0);
+        const bottomLeft = worldToScreenCoordinates(segment.x1 - ROAD_WIDTH, segment.y1, segment.z1);
+        const bottomRight = worldToScreenCoordinates(segment.x1 + ROAD_WIDTH, segment.y1, segment.z1);
         drawPoly(
             { x: 0, y: topLeft.y },
             { x: CANVAS_WIDTH, y: topLeft.y },
@@ -119,13 +144,12 @@ const renderRoad = () => {
                 const laneX0 = segment.x0 + ROAD_WIDTH * laneOffset;
                 const laneX1 = segment.x1 + ROAD_WIDTH * laneOffset;
 
-                const tlStrip = worldToScreenCoordinates(laneX0 - STRIPE_WIDTH, segment.y0, segment.z0 - playerPosition.z);
-                const trStrip = worldToScreenCoordinates(laneX0 + STRIPE_WIDTH, segment.y0, segment.z0 - playerPosition.z);
-                const blStrip = worldToScreenCoordinates(laneX1 - STRIPE_WIDTH, segment.y1, segment.z1 - playerPosition.z);
-                const brStrip = worldToScreenCoordinates(laneX1 + STRIPE_WIDTH, segment.y1, segment.z1 - playerPosition.z);
+                const tlStrip = worldToScreenCoordinates(laneX0 - STRIPE_WIDTH, segment.y0, segment.z0);
+                const trStrip = worldToScreenCoordinates(laneX0 + STRIPE_WIDTH, segment.y0, segment.z0);
+                const blStrip = worldToScreenCoordinates(laneX1 - STRIPE_WIDTH, segment.y1, segment.z1);
+                const brStrip = worldToScreenCoordinates(laneX1 + STRIPE_WIDTH, segment.y1, segment.z1);
                 drawPoly(tlStrip, trStrip, brStrip, blStrip, LINE_COLOR);
             }
-
         }
     });
 };
@@ -139,18 +163,36 @@ const render = () => {
 
 const buildRoad = () => {
     let isStrip = false;
+    let xStart = 0, xEnd = 0, yStart = 0, yEnd = 0;
 
     for (let i = 0; i < ROAD_SEGMENT_COUNT; i++) {
         if (i % SEGMENTS_PER_STRIP === 0) {
             isStrip = !isStrip;
         }
 
-        roadSegments.push({
-            x0: 0, y0: 0, z0: i * SEGMENT_LENGTH,
-            x1: 0, y1: 0, z1: (i + 1) * SEGMENT_LENGTH,
-            isStrip,
-        });
+        const curveTimer = i % CURVE_LENGTH;
+
+        if (curveTimer === 0) {
+            xStart = xEnd;
+            yStart = yEnd;
+            xEnd = xEnd + random(MIN_X_SCALE, MAX_X_SCALE);
+            yEnd = yEnd + random(MIN_Y_SCALE, MAX_Y_SCALE);
+        }
+
+        const x0 = easeInOut(curveTimer / CURVE_LENGTH, xStart, xEnd);
+        const y0 = easeInOut(curveTimer / CURVE_LENGTH, yStart, yEnd);
+
+        roadSegments.push({ x0, y0, z0: i * SEGMENT_LENGTH, isStrip });
     }
+
+    for (let i = 1; i < ROAD_SEGMENT_COUNT; i++) {
+        roadSegments[i - 1].x1 = roadSegments[i].x0;
+        roadSegments[i - 1].y1 = roadSegments[i].y0;
+        roadSegments[i - 1].z1 = roadSegments[i].z0;
+    }
+    roadSegments[ROAD_SEGMENT_COUNT - 1].x1 = roadSegments[ROAD_SEGMENT_COUNT - 1].x0;
+    roadSegments[ROAD_SEGMENT_COUNT - 1].y1 = roadSegments[ROAD_SEGMENT_COUNT - 1].y0;
+    roadSegments[ROAD_SEGMENT_COUNT - 1].z1 = roadSegments[ROAD_SEGMENT_COUNT - 1].z0;
 }
 
 function init() {
@@ -167,7 +209,7 @@ function init() {
     sunGradient.addColorStop(0, SUN_COLOR_DARK);
     sunGradient.addColorStop(SUN_GRADIENT_PERCENTAGE, SUN_COLOR_LIGHT);
 
-    window.setInterval(update, FIXED_TIMESTEP);
+    window.setInterval(update, FIXED_TIMESTEP / 1000);
     window.requestAnimationFrame(render);
     window.addEventListener('keydown', keyDownHandler);
     window.addEventListener('keyup', keyUpHandler);
