@@ -11,7 +11,7 @@ const SEGMENTS_PER_STRIP = 3;
 const LANE_COUNT = 3;
 const STRIPE_WIDTH = .2;
 
-const CAMERA_OFFSET = { x: 0, y: 3, z: -5 };
+const CAMERA_OFFSET = { x: 0, y: 30, z: -5 };
 const CAMERA_SCREEN_DISTANCE = 30;
 
 const MAX_DRAW_DISTANCE = 10000;
@@ -123,7 +123,7 @@ const renderBackground = () => {
 const renderRoad = () => {
     roadSegments.filter(
         segment => segment.z0 >= cameraPosition.z && segment.z0 <= cameraPosition.z + MAX_DRAW_DISTANCE
-    ).forEach(segment => {
+    ).reverse().forEach(segment => {
         const topLeft = worldToScreenCoordinates(segment.x0 - ROAD_WIDTH, segment.y0, segment.z0);
         const topRight = worldToScreenCoordinates(segment.x0 + ROAD_WIDTH, segment.y0, segment.z0);
         const bottomLeft = worldToScreenCoordinates(segment.x1 - ROAD_WIDTH, segment.y1, segment.z1);
